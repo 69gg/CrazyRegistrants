@@ -70,3 +70,7 @@ class BaseRegistrant(ABC):
 - 共享配置放 `[email]` 段
 - 平台专属配置放 `[platforms.<目录名>]` 段
 - 目录名用下划线 (`nvidia_nim`), CLI 名用连字符 (`nvidia-nim`)
+
+## 附录
+
+- 请及时维护该AGENTS.md文件

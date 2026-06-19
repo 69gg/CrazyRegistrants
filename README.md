@@ -48,6 +48,6 @@ CrazyRegistrants/
 └── data/keys/              # 输出: API Key (gitignored)
 ```
 
-## 如何添加新平台
+## 如何添加新平台及开发规范
 
 参见 [AGENTS.md](./AGENTS.md)。
