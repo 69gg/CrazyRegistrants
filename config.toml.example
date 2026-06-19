@@ -1,0 +1,24 @@
+# ============================================================
+# CrazyRegistrants 全局配置
+# 复制为 config.toml 并填入实际值 (config.toml 已加入 .gitignore)
+# ============================================================
+
+# --- 临时邮箱服务 (Cloudflare Temp Email) ---
+# 部署教程: https://github.com/dreamhunter2333/cloudflare_temp_email
+[email]
+base_url = "https://your-mail-service.example.com"
+# 自定义鉴权令牌 (Cloudflare Temp Email 后台设置的 custom_auth)
+custom_auth = "your-custom-auth-token"
+# 管理员密码 (Cloudflare Temp Email 后台设置的 admin 密码)
+admin_auth = "your-admin-password"
+# 邮箱域名 (需已绑定到 CF Temp Email 服务, 不要加 @)
+domain = "your-domain.com"
+
+# --- 平台专属配置 ---
+# 每个平台在 [platforms.<目录名>] 下配置
+
+[platforms.nvidia_nim]
+# build.nvidia.com 的 OAuth 客户端 ID (固定值, 一般不需修改)
+client_id = "1214762014100529152"
+# NVIDIA Build 站点地址 (一般不需修改)
+build_url = "https://build.nvidia.com"

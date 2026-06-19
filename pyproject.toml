@@ -1,0 +1,9 @@
+[project]
+name = "crazy-registrants"
+version = "0.1.0"
+description = "疯狂注册人：注册机大合集"
+requires-python = ">=3.11"
+dependencies = [
+    "curl-cffi>=0.7",
+    "playwright>=1.48",
+]
