@@ -48,15 +48,45 @@ class BaseRegistrant(ABC):
 - `register_one()` 会运行在多进程中 (仅 `-w > 1` 时), 避免全局状态
 - 密码由 `run()` 自动生成传入, 无需自己生成
 
+## CLI 通用参数 (基类已实现)
+
+- `-n/--count`: 注册数量。`N > 0` 注册满 N 个成功账号即停; **`N = 0` 无限注册** (惰性下发任务, 直到 `Ctrl-C` 优雅停止并汇总)
+- `-w/--workers`: 并行进程数。无限模式下不受 count 限制
+
+## 两种实现路径
+
+| 路径 | 适用 | 基建 | 示例 |
+|------|------|------|------|
+| **纯协议** | 后端有可直接调用的 JSON API, 无人机验证 | `lib.http_client.JsonApiClient` + `lib.email_client` | `agnes_ai` |
+| **浏览器** | 需走前端 / 有 hCaptcha / Turnstile | `lib.browser` + `lib.captcha` / `lib.turnstile` | `nvidia_nim` |
+
+优先走协议路径 (快、稳、无需图形界面)。先用抓包确认接口与人机验证情况, 再决定路径。
+
+### 纯协议路径速查
+
+```python
+from lib.http_client import JsonApiClient
+
+client = JsonApiClient(api_base, origin="https://app.example.com")
+data = client.get("/api/verification", params={...})   # 自动解包 data 字段
+client.set_token(data["access_token"])                 # 注入 Bearer
+client.post("/api/token", json={...})                  # 非 200 码自动抛 ApiError
+```
+
+- `JsonApiClient` 基于 curl_cffi 模拟浏览器指纹 (默认 `chrome131`), 自动持久化 Cloudflare `__cf_bm` cookie
+- 自定义验证码提取器配合 `poll_code(extractor=...)` 使用 (注意排除版权年份等干扰数字)
+
 ## 可复用模块 (lib/)
 
 | 模块 | 功能 |
 |------|------|
-| `lib.utils` | `log()`, `gen_password()`, `rand_name()`, `save_key()`, `set_worker_id()` |
-| `lib.config` | `load_config()`, `get_email_config()`, `get_platform_config()` |
+| `lib.utils` | `log()`, `gen_password()`, `rand_name()`, `save_key()`, `save_account()`, `set_worker_id()` |
+| `lib.config` | `load_config()`, `get_email_config()`, `get_turnstile_config()`, `get_platform_config()` |
 | `lib.email_client` | `create_email()`, `poll_code()`, `TempEmail` |
+| `lib.http_client` | `JsonApiClient` (协议路径 JSON API 客户端), `ApiError` |
 | `lib.browser` | `browser_session()` 上下文, `dismiss_cookie()` |
 | `lib.captcha` | `click_hcaptcha_checkbox()`, `poll_hcaptcha_token()` |
+| `lib.turnstile` | `solve_turnstile()`, `inject_turnstile_widget()`, `click_turnstile_checkbox()`, `poll_turnstile_token()` |
 
 ## 代码风格
 
@@ -67,7 +97,8 @@ class BaseRegistrant(ABC):
 
 ## 配置约定
 
-- 共享配置放 `[email]` 段
+- 邮箱共享配置放 `[email]` 段
+- Turnstile 共享配置放 `[turnstile]` 段，使用内置 Playwright 求解，不依赖外部脚本
 - 平台专属配置放 `[platforms.<目录名>]` 段
 - 目录名用下划线 (`nvidia_nim`), CLI 名用连字符 (`nvidia-nim`)
 

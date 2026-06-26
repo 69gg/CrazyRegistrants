@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import contextvars
 import fcntl
+import json
 import random
 import string
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 _worker_id: contextvars.ContextVar[int] = contextvars.ContextVar("worker_id", default=0)
 
@@ -37,15 +39,29 @@ def rand_name(prefix: str = "nv", n: int = 6) -> str:
     return prefix + "".join(random.choices(string.ascii_lowercase + string.digits, k=n))
 
 
-def save_key(output_dir: Path, platform: str, key: str) -> None:
-    """线程安全的 key 保存"""
+def _append_locked(output_dir: Path, filename: str, line: str) -> None:
+    """跨进程/线程安全地向文件追加一行 (flock 互斥)"""
+    output_dir.mkdir(parents=True, exist_ok=True)
     lock_file = output_dir / ".lock"
-    key_file = output_dir / f"{platform}.txt"
-    key_file.parent.mkdir(parents=True, exist_ok=True)
+    target = output_dir / filename
     with open(lock_file, "a") as lf:
         try:
             fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
-            with open(key_file, "a") as f:
-                f.write(f"{key}\n")
+            with open(target, "a") as f:
+                f.write(f"{line}\n")
         finally:
             fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+
+
+def save_key(output_dir: Path, platform: str, key: str) -> None:
+    """线程安全的 key 保存 (一行一个 key)"""
+    _append_locked(output_dir, f"{platform}.txt", key)
+
+
+def save_account(output_dir: Path, platform: str, account: dict[str, Any]) -> None:
+    """线程安全的完整账号保存 (JSONL, 一行一个账号)
+
+    account 通常含 email/password/access_token/key 等字段, 便于二次登录复用。
+    """
+    record = {"created_at": f"{datetime.now():%Y-%m-%dT%H:%M:%S}", **account}
+    _append_locked(output_dir, f"{platform}_accounts.jsonl", json.dumps(record, ensure_ascii=False))

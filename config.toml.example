@@ -14,6 +14,21 @@ admin_auth = "your-admin-password"
 # 邮箱域名 (需已绑定到 CF Temp Email 服务, 不要加 @)
 domain = "your-domain.com"
 
+# --- Cloudflare Turnstile (可选) ---
+# 内置 Playwright 求解，不依赖外部 solver 脚本。
+[turnstile]
+# patchright 优先；也可改为 chromium/firefox/webkit 走 Playwright 原生浏览器
+browser_type = "patchright"
+browser_name = ""
+browser_version = ""
+use_random_config = true
+headless = false
+timeout = 120
+debug = false
+proxy_url = ""
+# 留空自动探测系统 Chrome/Chromium；也可显式指定 /usr/bin/google-chrome-stable
+executable_path = ""
+
 # --- 平台专属配置 ---
 # 每个平台在 [platforms.<目录名>] 下配置
 
@@ -22,3 +37,11 @@ domain = "your-domain.com"
 client_id = "1214762014100529152"
 # NVIDIA Build 站点地址 (一般不需修改)
 build_url = "https://build.nvidia.com"
+
+[platforms.agnes_ai]
+# platform.agnes-ai.com 后端 API 地址 (一般不需修改)
+api_base = "https://platform-backend.agnes-ai.com"
+# 创建的 API Key 名称
+key_name = "default"
+# 密钥档位: default=个人免费 / enterprise=企业 (需企业认证)
+key_profile = "default"
