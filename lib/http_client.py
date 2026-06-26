@@ -3,11 +3,14 @@
 为"纯协议"平台 (直接调后端 JSON API, 不走浏览器) 提供可复用基建:
     - curl_cffi Session 浏览器指纹模拟, 自动持久化 Cloudflare __cf_bm cookie
     - 统一注入公共请求头 (origin/referer/x-user-language)
+    - 每次请求随机化 UA + 来源 IP 伪造头, 规避按 IP/UA 的限流
+    - 429 限流自动退避重试 (遵循 Retry-After, 等待时间封顶)
     - 统一解包 {"code","message","data"} 响应信封, 非成功码抛错
     - Bearer Token 鉴权注入
 """
 from __future__ import annotations
 
+import random
 import time
 from typing import Any
 
@@ -16,6 +19,45 @@ from curl_cffi import requests as cffi_requests
 from .utils import log
 
 DEFAULT_IMPERSONATE = "chrome131"
+
+# 随机 UA 池: 主流桌面 Chrome 大版本 (跨 Windows/macOS/Linux)
+_UA_CHROME_VERSIONS = ["120", "121", "122", "123", "124", "125", "126", "131", "133", "149"]
+_UA_PLATFORMS = [
+    "Windows NT 10.0; Win64; x64",
+    "Macintosh; Intel Mac OS X 10_15_7",
+    "X11; Linux x86_64",
+]
+
+
+def random_user_agent() -> str:
+    """生成随机桌面 Chrome User-Agent"""
+    platform = random.choice(_UA_PLATFORMS)
+    version = random.choice(_UA_CHROME_VERSIONS)
+    return (
+        f"Mozilla/5.0 ({platform}) AppleWebKit/537.36 "
+        f"(KHTML, like Gecko) Chrome/{version}.0.0.0 Safari/537.36"
+    )
+
+
+def random_ip() -> str:
+    """生成随机公网 IPv4 (规避保留段)"""
+    first = random.choice([random.randint(1, 126), random.randint(128, 223)])
+    return f"{first}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 254)}"
+
+
+def random_forward_headers() -> dict[str, str]:
+    """生成随机 UA + 随机来源 IP 伪造头, 用于规避按 IP/UA 的限流
+
+    注意: 若目标在 Cloudflare 等反代之后且只信任真实 TCP 源 IP,
+    这些伪造的 IP 头会被忽略 (需配合代理池才能真正换 IP)。
+    """
+    ip = random_ip()
+    return {
+        "user-agent": random_user_agent(),
+        "x-forwarded-for": ip,
+        "x-real-ip": ip,
+        "x-client-ip": ip,
+    }
 
 
 class ApiError(RuntimeError):
@@ -53,6 +95,7 @@ class JsonApiClient:
         max_retries: int = 3,
         retry_backoff: float = 5.0,
         max_retry_wait: float = 30.0,
+        randomize_headers: bool = True,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
@@ -61,6 +104,8 @@ class JsonApiClient:
         self.retry_backoff = retry_backoff
         # 单次重试最长等待 (秒): 服务端 Retry-After 过长时封顶, 避免死等
         self.max_retry_wait = max_retry_wait
+        # 每次请求随机化 UA + 来源 IP 伪造头, 规避按 IP/UA 的限流
+        self.randomize_headers = randomize_headers
         self._token: str = ""
 
         headers: dict[str, str] = {"content-type": "application/json"}
@@ -99,12 +144,16 @@ class JsonApiClient:
     ) -> Any:
         url = path if path.startswith("http") else f"{self.base_url}{path}"
         for attempt in range(self.max_retries + 1):
+            headers = self._auth_headers()
+            # 每次 (含重试) 重新随机化, 尽量让限流计数落在不同 UA/IP 上
+            if self.randomize_headers:
+                headers.update(random_forward_headers())
             resp = self.session.request(
                 method,
                 url,
                 params=params,
                 json=json,
-                headers=self._auth_headers(),
+                headers=headers,
                 timeout=self.timeout,
             )
             # 限流: 退避后重试 (优先遵循 Retry-After, 否则指数退避; 统一封顶避免死等)

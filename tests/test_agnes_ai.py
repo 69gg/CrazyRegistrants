@@ -3,7 +3,13 @@ from __future__ import annotations
 from typing import Any
 from unittest import TestCase, mock
 
-from lib.http_client import ApiError, JsonApiClient
+from lib.http_client import (
+    ApiError,
+    JsonApiClient,
+    random_forward_headers,
+    random_ip,
+    random_user_agent,
+)
 from platforms.agnes_ai.pipeline import _agnes_code_extractor
 
 
@@ -25,8 +31,10 @@ class _FakeSession:
         self._responses = responses
         self.calls = 0
         self.headers: dict[str, str] = {}
+        self.sent_headers: list[dict[str, str]] = []  # 记录每次请求的 headers
 
     def request(self, *args: Any, **kwargs: Any) -> _FakeResp:
+        self.sent_headers.append(dict(kwargs.get("headers") or {}))
         resp = self._responses[min(self.calls, len(self._responses) - 1)]
         self.calls += 1
         return resp
@@ -133,3 +141,66 @@ class JsonApiClientTest(TestCase):
                 client.get("/api/foo")
         self.assertEqual(ctx.exception.status, 429)
         self.assertEqual(client.session.calls, 3)  # type: ignore[attr-defined]  # 1 + 2 retries
+
+    def test_randomized_headers_injected_per_request(self) -> None:
+        client = JsonApiClient("https://api.example.com", randomize_headers=True)
+        client.session = _FakeSession([_FakeResp(200, {"code": 200, "data": None})])  # type: ignore[assignment]
+        client.get("/api/foo")
+        sent = client.session.sent_headers[0]  # type: ignore[attr-defined]
+        for key in ("user-agent", "x-forwarded-for", "x-real-ip", "x-client-ip"):
+            self.assertIn(key, sent)
+
+    def test_randomization_can_be_disabled(self) -> None:
+        client = JsonApiClient("https://api.example.com", randomize_headers=False)
+        client.session = _FakeSession([_FakeResp(200, {"code": 200, "data": None})])  # type: ignore[assignment]
+        client.get("/api/foo")
+        sent = client.session.sent_headers[0]  # type: ignore[attr-defined]
+        self.assertNotIn("x-forwarded-for", sent)
+        self.assertNotIn("user-agent", sent)
+
+    def test_retry_rerandomizes_headers(self) -> None:
+        # 重试时应换新的 UA/IP (而非沿用首次)
+        client = JsonApiClient("https://api.example.com", retry_backoff=0.01)
+        client.session = _FakeSession(  # type: ignore[assignment]
+            [
+                _FakeResp(429, {"code": 429}),
+                _FakeResp(200, {"code": 200, "data": None}),
+            ]
+        )
+        with mock.patch("lib.http_client.time.sleep"):
+            with mock.patch(
+                "lib.http_client.random_forward_headers",
+                side_effect=[
+                    {"user-agent": "UA1", "x-forwarded-for": "1.1.1.1"},
+                    {"user-agent": "UA2", "x-forwarded-for": "2.2.2.2"},
+                ],
+            ):
+                client.get("/api/foo")
+        sent = client.session.sent_headers  # type: ignore[attr-defined]
+        self.assertEqual(sent[0]["x-forwarded-for"], "1.1.1.1")
+        self.assertEqual(sent[1]["x-forwarded-for"], "2.2.2.2")
+
+
+class RandomHeaderHelpersTest(TestCase):
+    def test_random_user_agent_format(self) -> None:
+        ua = random_user_agent()
+        self.assertTrue(ua.startswith("Mozilla/5.0"))
+        self.assertIn("Chrome/", ua)
+
+    def test_random_ip_is_valid_public_ipv4(self) -> None:
+        for _ in range(50):
+            octets = [int(x) for x in random_ip().split(".")]
+            self.assertEqual(len(octets), 4)
+            self.assertTrue(all(0 <= o <= 255 for o in octets))
+            self.assertNotEqual(octets[0], 127)  # 排除环回
+            self.assertNotEqual(octets[0], 0)
+
+    def test_forward_headers_share_one_ip(self) -> None:
+        h = random_forward_headers()
+        self.assertEqual(h["x-forwarded-for"], h["x-real-ip"])
+        self.assertEqual(h["x-forwarded-for"], h["x-client-ip"])
+
+    def test_random_user_agent_varies(self) -> None:
+        # 多次生成应出现多个不同值 (概率上几乎必然)
+        uas = {random_user_agent() for _ in range(50)}
+        self.assertGreater(len(uas), 1)
