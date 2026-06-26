@@ -54,6 +54,12 @@ key_profile = "default"   # default=个人免费 / enterprise=企业
 - 鉴权走 `Authorization: Bearer <token>` 头 (非 cookie)；`access_token` 有效期约 28 天
 - default 档每账号最多创建 20 个密钥
 
+### 限流 (实测)
+
+- `register` 按**出口 IP** 限流, 滑动窗口达数十分钟 (429 响应 `Retry-After` 约 1600~1800s), 且**失败请求也计数**
+- 限流在 Cloudflare 边缘按真实 TCP 源 IP 判定, 伪造 `X-Forwarded-For`/UA **无效** (`JsonApiClient` 的随机头对此平台不起作用, 需配代理池真正换 IP)
+- 因此 `register` 遇 429 **立即放弃当前账号** (不原地重试), 由上层换号继续; 单 IP 注册速率受限, 大批量需轮换出口 IP
+
 ## 使用生成的 Key
 
 Agnes 提供 OpenAI 兼容网关, Base URL 为 `https://apihub.agnes-ai.com/v1`:

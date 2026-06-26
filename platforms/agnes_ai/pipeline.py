@@ -13,7 +13,7 @@ from typing import Any
 from lib.base import BaseRegistrant, RegistrantMeta
 from lib.config import get_email_config, get_platform_config
 from lib.email_client import create_email, poll_code
-from lib.http_client import JsonApiClient
+from lib.http_client import ApiError, JsonApiClient
 from lib.utils import log, save_account, save_key, set_worker_id
 
 DEFAULT_API_BASE = "https://platform-backend.agnes-ai.com"
@@ -80,6 +80,7 @@ class AgnesAiRegistrant(BaseRegistrant):
                 return None
 
             # 3. 注册 (响应直接返回 access_token, 无需再登录)
+            #    register 按 IP 限流且窗口长达数十分钟, 遇 429 立即放弃换号, 不原地重试
             data = client.post(
                 "/api/user/register",
                 json={
@@ -88,6 +89,7 @@ class AgnesAiRegistrant(BaseRegistrant):
                     "password_confirm": password,
                     "code": code,
                 },
+                retry_on_429=False,
             )
             token = str((data or {}).get("access_token") or "")
             if not token:
@@ -118,6 +120,10 @@ class AgnesAiRegistrant(BaseRegistrant):
             log(f"完成! key={api_key}")
             return api_key
 
+        except ApiError as exc:
+            # 限流等业务错误属预期内, 简洁记录后由上层换号重试, 不刷 traceback
+            log(f"失败: {exc}", "!")
+            return None
         except Exception as exc:
             log(f"失败: {exc}", "!")
             traceback.print_exc()

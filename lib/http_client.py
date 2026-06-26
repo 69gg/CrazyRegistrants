@@ -128,11 +128,23 @@ class JsonApiClient:
         # 未登录时部分接口要求显式传 Bearer null (对齐前端行为)
         return {"authorization": f"Bearer {self._token}" if self._token else "Bearer null"}
 
-    def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
-        return self._request("GET", path, params=params)
+    def get(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        retry_on_429: bool = True,
+    ) -> Any:
+        return self._request("GET", path, params=params, retry_on_429=retry_on_429)
 
-    def post(self, path: str, *, json: dict[str, Any] | None = None) -> Any:
-        return self._request("POST", path, json=json)
+    def post(
+        self,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        retry_on_429: bool = True,
+    ) -> Any:
+        return self._request("POST", path, json=json, retry_on_429=retry_on_429)
 
     def _request(
         self,
@@ -141,6 +153,7 @@ class JsonApiClient:
         *,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
+        retry_on_429: bool = True,
     ) -> Any:
         url = path if path.startswith("http") else f"{self.base_url}{path}"
         for attempt in range(self.max_retries + 1):
@@ -156,15 +169,23 @@ class JsonApiClient:
                 headers=headers,
                 timeout=self.timeout,
             )
-            # 限流: 退避后重试 (优先遵循 Retry-After, 否则指数退避; 统一封顶避免死等)
-            if resp.status_code == 429 and attempt < self.max_retries:
-                wait = min(
-                    self._retry_after(resp) or self.retry_backoff * (2**attempt),
-                    self.max_retry_wait,
-                )
-                log(f"{path} 被限流 (429), {wait:.0f}s 后重试 ({attempt + 1}/{self.max_retries})", "!")
-                time.sleep(wait)
-                continue
+            # 限流处理
+            if resp.status_code == 429:
+                retry_after = self._retry_after(resp)
+                # 长窗口限流 (如 register 按 IP 计数, 窗口达数十分钟): 重试无意义且会被继续计数,
+                # 调用方可传 retry_on_429=False 立即放弃, 由上层换 IP/账号重来
+                if not retry_on_429:
+                    raise ApiError(
+                        f"{method} {path} 被限流 (429), Retry-After={retry_after:.0f}s",
+                        status=429,
+                        code=429,
+                    )
+                # 短时限流: 退避后重试 (优先遵循 Retry-After, 否则指数退避; 统一封顶避免死等)
+                if attempt < self.max_retries:
+                    wait = min(retry_after or self.retry_backoff * (2**attempt), self.max_retry_wait)
+                    log(f"{path} 被限流 (429), {wait:.0f}s 后重试 ({attempt + 1}/{self.max_retries})", "!")
+                    time.sleep(wait)
+                    continue
 
             if resp.status_code != 200:
                 raise ApiError(

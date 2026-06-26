@@ -142,6 +142,19 @@ class JsonApiClientTest(TestCase):
         self.assertEqual(ctx.exception.status, 429)
         self.assertEqual(client.session.calls, 3)  # type: ignore[attr-defined]  # 1 + 2 retries
 
+    def test_no_retry_on_429_raises_immediately(self) -> None:
+        # retry_on_429=False: 长窗口限流接口遇 429 立即抛错, 不 sleep 不重试
+        client = JsonApiClient("https://api.example.com")
+        client.session = _FakeSession(  # type: ignore[assignment]
+            [_FakeResp(429, {"code": 429}, headers={"retry-after": "1800"})]
+        )
+        with mock.patch("lib.http_client.time.sleep") as sleep_mock:
+            with self.assertRaises(ApiError) as ctx:
+                client.post("/api/user/register", json={}, retry_on_429=False)
+        self.assertEqual(ctx.exception.status, 429)
+        self.assertEqual(client.session.calls, 1)  # type: ignore[attr-defined]  # 仅 1 次, 无重试
+        sleep_mock.assert_not_called()  # 不等待
+
     def test_randomized_headers_injected_per_request(self) -> None:
         client = JsonApiClient("https://api.example.com", randomize_headers=True)
         client.session = _FakeSession([_FakeResp(200, {"code": 200, "data": None})])  # type: ignore[assignment]
