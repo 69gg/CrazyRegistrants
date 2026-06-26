@@ -35,6 +35,6 @@ build_url = "https://build.nvidia.com"
 4. 填入密码 → **手动解 hCaptcha** → 点击 Create Account
 5. 邮箱接收验证码 → 自动填入
 6. 同意条款 → 创建 Cloud Account → Generate Key
-7. Key 保存到 `data/keys/nvidia_nim.txt`
+7. Key 保存到 `output/nvidia_nim/keys.txt`
 
 > **注意**: hCaptcha 需要手动在浏览器窗口中解算，脚本只负责点击 checkbox 和轮询检测完成状态。

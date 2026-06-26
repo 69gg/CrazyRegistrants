@@ -60,7 +60,7 @@ CrazyRegistrants/
 ├── platforms/              # 各平台注册机
 │   ├── agnes_ai/           # ← 纯协议平台示例
 │   └── nvidia_nim/         # ← 浏览器平台示例 (pipeline.py + README.md)
-└── data/keys/              # 输出: API Key + 账号 (gitignored)
+└── output/                 # 输出: output/<平台>/keys.txt + accounts.jsonl (gitignored)
 ```
 
 ## 如何添加新平台及开发规范

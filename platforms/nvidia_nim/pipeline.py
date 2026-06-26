@@ -10,7 +10,6 @@ import re
 import threading
 import time
 import traceback
-from pathlib import Path
 
 from lib.base import BaseRegistrant, RegistrantMeta
 from lib.browser import browser_session, dismiss_cookie
@@ -46,7 +45,6 @@ class NvidiaNimRegistrant(BaseRegistrant):
         email_cfg = get_email_config()
         platform_cfg = get_platform_config(self.meta.name)
         build_url = platform_cfg.get("build_url", DEFAULT_BUILD_URL)
-        output_dir = Path("data/keys")
 
         log("=" * 40)
         log("开始注册")
@@ -110,7 +108,7 @@ class NvidiaNimRegistrant(BaseRegistrant):
 
                 api_key = _generate_key(page)
                 if api_key:
-                    save_key(output_dir, "nvidia_nim", api_key)
+                    save_key("nvidia_nim", api_key)
                     log(f"完成! {email_obj.address}")
                 return api_key
 

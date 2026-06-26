@@ -39,8 +39,13 @@ def rand_name(prefix: str = "nv", n: int = 6) -> str:
     return prefix + "".join(random.choices(string.ascii_lowercase + string.digits, k=n))
 
 
-def _append_locked(output_dir: Path, filename: str, line: str) -> None:
-    """跨进程/线程安全地向文件追加一行 (flock 互斥)"""
+# 各平台产物统一输出到 output/<platform>/ 下
+OUTPUT_ROOT = Path("output")
+
+
+def _append_locked(platform: str, filename: str, line: str) -> None:
+    """跨进程/线程安全地向 output/<platform>/<filename> 追加一行 (flock 互斥)"""
+    output_dir = OUTPUT_ROOT / platform
     output_dir.mkdir(parents=True, exist_ok=True)
     lock_file = output_dir / ".lock"
     target = output_dir / filename
@@ -53,15 +58,15 @@ def _append_locked(output_dir: Path, filename: str, line: str) -> None:
             fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
 
 
-def save_key(output_dir: Path, platform: str, key: str) -> None:
-    """线程安全的 key 保存 (一行一个 key)"""
-    _append_locked(output_dir, f"{platform}.txt", key)
+def save_key(platform: str, key: str) -> None:
+    """线程安全的 key 保存到 output/<platform>/keys.txt (一行一个 key)"""
+    _append_locked(platform, "keys.txt", key)
 
 
-def save_account(output_dir: Path, platform: str, account: dict[str, Any]) -> None:
-    """线程安全的完整账号保存 (JSONL, 一行一个账号)
+def save_account(platform: str, account: dict[str, Any]) -> None:
+    """线程安全的完整账号保存到 output/<platform>/accounts.jsonl (一行一个账号)
 
     account 通常含 email/password/access_token/key 等字段, 便于二次登录复用。
     """
     record = {"created_at": f"{datetime.now():%Y-%m-%dT%H:%M:%S}", **account}
-    _append_locked(output_dir, f"{platform}_accounts.jsonl", json.dumps(record, ensure_ascii=False))
+    _append_locked(platform, "accounts.jsonl", json.dumps(record, ensure_ascii=False))

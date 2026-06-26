@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 import traceback
-from pathlib import Path
 from typing import Any
 
 from lib.base import BaseRegistrant, RegistrantMeta
@@ -19,7 +18,6 @@ from lib.utils import log, save_account, save_key, set_worker_id
 
 DEFAULT_API_BASE = "https://platform-backend.agnes-ai.com"
 WEB_ORIGIN = "https://platform.agnes-ai.com"
-OUTPUT_DIR = Path("data/keys")
 
 
 def _agnes_code_extractor(raw: str) -> str | None:
@@ -109,14 +107,14 @@ class AgnesAiRegistrant(BaseRegistrant):
                 return None
 
             # 5. 保存 key + 完整账号
-            save_key(OUTPUT_DIR, "agnes_ai", api_key)
+            save_key("agnes_ai", api_key)
             account: dict[str, Any] = {
                 "email": email.address,
                 "password": password,
                 "access_token": token,
                 "key": api_key,
             }
-            save_account(OUTPUT_DIR, "agnes_ai", account)
+            save_account("agnes_ai", account)
             log(f"完成! key={api_key}")
             return api_key
 

@@ -39,8 +39,8 @@ key_profile = "default"   # default=个人免费 / enterprise=企业
 4. `POST /api/user/register` 提交注册, 响应直接返回 `access_token`
 5. `POST /api/token` 创建 API Key, 响应返回完整 `sk-...` 密钥
 6. 保存:
-   - `data/keys/agnes_ai.txt` — 一行一个 key
-   - `data/keys/agnes_ai_accounts.jsonl` — 完整账号 `{email, password, access_token, key, created_at}`, 可二次登录复用
+   - `output/agnes_ai/keys.txt` — 一行一个 key
+   - `output/agnes_ai/accounts.jsonl` — 完整账号 `{email, password, access_token, key, created_at}`, 可二次登录复用
 
 ## 接口速查
 
