@@ -39,36 +39,41 @@ class BaseRegistrant(ABC):
         target = "无限" if infinite else str(count)
         log(f"目标 {target} 个账号, {workers} 进程并行")
 
-        success = 0
-        try:
-            if workers <= 1:
-                success = self._run_serial(count, infinite)
-            else:
-                success = self._run_parallel(count, infinite, workers)
-        except KeyboardInterrupt:
-            log("收到中断信号, 停止注册", "!")
+        if workers <= 1:
+            success = self._run_serial(count, infinite)
+        else:
+            success = self._run_parallel(count, infinite, workers)
 
         log("=" * 50)
         log(f"完成: {success}" + ("" if infinite else f"/{count}"))
         log("=" * 50)
 
     def _run_serial(self, count: int, infinite: bool) -> int:
-        """单进程: 依次注册, 每个失败自动重试直到成功"""
+        """单进程: 依次注册, 每个失败自动重试直到成功
+
+        中断 (Ctrl-C) 时返回已成功数, 不让 KeyboardInterrupt 冒泡丢失计数。
+        """
         success = 0
         idx = 0
-        while infinite or idx < count:
-            set_worker_id(idx)
-            while True:
-                r = self.register_one(idx, password=gen_password())
-                if r:
-                    success += 1
-                    break
-                log(f"重试 #{idx + 1}...")
-            idx += 1
+        try:
+            while infinite or idx < count:
+                set_worker_id(idx)
+                while True:
+                    r = self.register_one(idx, password=gen_password())
+                    if r:
+                        success += 1
+                        break
+                    log(f"重试 #{idx + 1}...")
+                idx += 1
+        except KeyboardInterrupt:
+            log("收到中断信号, 停止注册", "!")
         return success
 
     def _run_parallel(self, count: int, infinite: bool, workers: int) -> int:
-        """多进程: 惰性下发任务, 支持无限模式"""
+        """多进程: 惰性下发任务, 支持无限模式
+
+        中断 (Ctrl-C) 时终止进程池并返回已成功数。
+        """
         success = 0
         with mp.Pool(workers) as pool:
             try:
@@ -76,9 +81,9 @@ class BaseRegistrant(ABC):
                     if r:
                         success += 1
             except KeyboardInterrupt:
+                log("收到中断信号, 停止注册", "!")
                 pool.terminate()
                 pool.join()
-                raise
         return success
 
     @staticmethod
