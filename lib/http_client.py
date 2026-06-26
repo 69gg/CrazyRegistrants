@@ -52,12 +52,15 @@ class JsonApiClient:
         success_code: int = 200,
         max_retries: int = 3,
         retry_backoff: float = 5.0,
+        max_retry_wait: float = 30.0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.success_code = success_code
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
+        # 单次重试最长等待 (秒): 服务端 Retry-After 过长时封顶, 避免死等
+        self.max_retry_wait = max_retry_wait
         self._token: str = ""
 
         headers: dict[str, str] = {"content-type": "application/json"}
@@ -104,9 +107,12 @@ class JsonApiClient:
                 headers=self._auth_headers(),
                 timeout=self.timeout,
             )
-            # 限流: 退避后重试 (优先遵循 Retry-After, 否则指数退避)
+            # 限流: 退避后重试 (优先遵循 Retry-After, 否则指数退避; 统一封顶避免死等)
             if resp.status_code == 429 and attempt < self.max_retries:
-                wait = self._retry_after(resp) or self.retry_backoff * (2**attempt)
+                wait = min(
+                    self._retry_after(resp) or self.retry_backoff * (2**attempt),
+                    self.max_retry_wait,
+                )
                 log(f"{path} 被限流 (429), {wait:.0f}s 后重试 ({attempt + 1}/{self.max_retries})", "!")
                 time.sleep(wait)
                 continue

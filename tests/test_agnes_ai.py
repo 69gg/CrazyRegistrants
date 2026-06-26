@@ -112,6 +112,19 @@ class JsonApiClientTest(TestCase):
             client.get("/api/foo")
         sleep_mock.assert_called_once_with(7.0)
 
+    def test_retry_after_capped_to_max_wait(self) -> None:
+        # 服务端返回超长 Retry-After (如 1800s) 应被封顶到 max_retry_wait, 不死等
+        client = JsonApiClient("https://api.example.com", max_retry_wait=30.0)
+        client.session = _FakeSession(  # type: ignore[assignment]
+            [
+                _FakeResp(429, {"code": 429}, headers={"retry-after": "1800"}),
+                _FakeResp(200, {"code": 200, "data": None}),
+            ]
+        )
+        with mock.patch("lib.http_client.time.sleep") as sleep_mock:
+            client.get("/api/foo")
+        sleep_mock.assert_called_once_with(30.0)
+
     def test_retry_exhausted_raises(self) -> None:
         client = JsonApiClient("https://api.example.com", max_retries=2, retry_backoff=0.01)
         client.session = _FakeSession([_FakeResp(429, {"code": 429})])  # type: ignore[assignment]
