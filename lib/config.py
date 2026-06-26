@@ -19,5 +19,9 @@ def get_email_config() -> dict[str, Any]:
     return load_config().get("email", {})
 
 
+def get_turnstile_config() -> dict[str, Any]:
+    return load_config().get("turnstile", {})
+
+
 def get_platform_config(name: str) -> dict[str, Any]:
     return load_config().get("platforms", {}).get(name, {})
